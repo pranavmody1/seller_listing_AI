@@ -138,11 +138,161 @@ Once the application is running, visit:
 
 ## Deployment
 
-The `deploy/` directory contains a production-ready version with all dependencies bundled. For deployment:
+### AWS Lambda Deployment
 
-1. Configure your production environment variables
-2. Use the deployment script in `deploy/main.py`
-3. Deploy using your preferred platform (AWS Lambda with Mangum, Docker, etc.)
+This application is designed to run on AWS Lambda using Mangum as the ASGI adapter. Follow these steps to deploy:
+
+#### Prerequisites
+- AWS Account with appropriate permissions
+- AWS CLI configured (`aws configure`)
+- OpenAI API key
+
+#### Step 1: Prepare Deployment Package
+
+1. Navigate to the deployment directory:
+```bash
+cd deploy/
+```
+
+2. The `deploy/` directory already contains all required dependencies bundled. If you need to update dependencies:
+```bash
+pip install -r ../requirements.txt -t .
+```
+
+#### Step 2: Create Deployment ZIP
+
+Create a ZIP file with all dependencies and the main application:
+```bash
+cd deploy/
+zip -r ../lambda_deployment.zip . -x ".*" -x "__pycache__/*"
+```
+
+Or if deploying from the root directory:
+```bash
+zip -r lambda_deployment.zip main.py deploy/ -x "deploy/__pycache__/*" -x ".*"
+```
+
+#### Step 3: Create Lambda Function
+
+1. Go to AWS Lambda Console
+2. Click **Create function**
+3. Choose **Author from scratch**
+4. Configure:
+   - **Function name**: `seller-listing-ai`
+   - **Runtime**: Python 3.9 or higher
+   - **Architecture**: x86_64 or arm64
+5. Click **Create function**
+
+#### Step 4: Upload Code
+
+1. In the Lambda function page, go to **Code** tab
+2. Click **Upload from** → **.zip file**
+3. Upload the `lambda_deployment.zip` file
+4. Click **Save**
+
+#### Step 5: Configure Handler
+
+1. Go to **Runtime settings**
+2. Click **Edit**
+3. Set **Handler** to: `main.handler`
+4. Click **Save**
+
+#### Step 6: Set Environment Variables
+
+1. Go to **Configuration** → **Environment variables**
+2. Click **Edit** → **Add environment variable**
+3. Add:
+   - **Key**: `OPENAI_API_KEY`
+   - **Value**: Your OpenAI API key
+4. Click **Save**
+
+#### Step 7: Adjust Memory and Timeout
+
+1. Go to **Configuration** → **General configuration**
+2. Click **Edit**
+3. Set:
+   - **Memory**: 512 MB (or higher for better performance)
+   - **Timeout**: 30 seconds (or more for image processing)
+4. Click **Save**
+
+#### Step 8: Create Function URL
+
+1. Go to **Configuration** → **Function URL**
+2. Click **Create function URL**
+3. Configure:
+   - **Auth type**: NONE (for public access) or AWS_IAM (for authenticated access)
+   - **Configure cross-origin resource sharing (CORS)**: Enable
+   - Add allowed origins (e.g., `*` for testing or your frontend domain)
+   - Allow methods: POST, OPTIONS
+   - Allow headers: content-type
+4. Click **Save**
+5. Copy the **Function URL** - this is your API endpoint
+
+#### Step 9: Update Frontend
+
+Update the API endpoint in your React frontend (`holiday-describer/src/App.js`):
+```javascript
+const res = await axios.post(
+  "YOUR_LAMBDA_FUNCTION_URL/describe",  // Replace with your Function URL
+  formData,
+  { headers: { "Content-Type": "multipart/form-data" } }
+);
+```
+
+#### Step 10: Test the Deployment
+
+Test your Lambda function:
+```bash
+curl -X POST "YOUR_LAMBDA_FUNCTION_URL/describe" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test_image.jpg"
+```
+
+### Alternative: Using AWS SAM or Serverless Framework
+
+You can also deploy using infrastructure-as-code tools:
+
+**AWS SAM template.yaml example:**
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  SellerListingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: deploy/
+      Handler: main.handler
+      Runtime: python3.9
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - "*"
+          AllowMethods:
+            - POST
+            - OPTIONS
+```
+
+Deploy with:
+```bash
+sam build
+sam deploy --guided
+```
+
+### Docker Deployment (Alternative)
+
+If you prefer Docker instead of Lambda:
+```bash
+docker build -t seller-listing-ai .
+docker run -p 8000:8000 -e OPENAI_API_KEY=your_key seller-listing-ai
+```
 
 ## Environment Variables
 
