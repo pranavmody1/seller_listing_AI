@@ -1,0 +1,509 @@
+================================================================================
+                    SELLER AI - PRODUCT DESCRIPTION GENERATOR
+                            PROJECT DOCUMENTATION
+================================================================================
+
+OVERVIEW
+--------
+This project is an AWS Lambda-based API that automatically generates product 
+descriptions, categories, tags, and metadata from product images using OpenAI's 
+GPT-4o Vision API. It's designed to help online sellers quickly catalog and 
+describe their products.
+
+
+ARCHITECTURE
+------------
+
+    ┌─────────────────┐
+    │ User Uploads    │──REST API──┐
+    │ Image           │            │
+    └─────────────────┘            ▼
+                        ┌─────────────────────────────┐
+                        │   AWS Lambda + FastAPI      │
+                        │   (Single Function)         │
+                        │   - Receives image          │
+                        │   - Calls OpenAI API        │
+                        │   - Returns JSON response   │
+                        └─────────────────────────────┘
+                                   │           ▲
+                            Image  │           │ JSON
+                                   ▼           │
+                        ┌─────────────────────────────┐
+                        │   GPT-4o Vision API         │
+                        │   Analyzes image & returns  │
+                        │   structured JSON           │
+                        └─────────────────────────────┘
+                                   
+    ┌─────────────────┐            │
+    │ Description,    │◄───REST────┘
+    │ tags, etc.      │    API
+    │ in browser      │
+    └─────────────────┘
+
+
+COMPONENTS & THEIR ROLES
+-------------------------
+
+1. FASTAPI APPLICATION (main.py / deploy/main.py)
+   
+   Role: Web server and API framework that handles HTTP requests
+   
+   Key Functions:
+   - app = FastAPI() 
+     Initializes the FastAPI application
+   
+   - @app.post("/describe") 
+     Defines the /describe endpoint that accepts image uploads
+   
+   - async def describe_image() 
+     Main handler function that:
+     * Validates uploaded file is an image
+     * Reads image bytes
+     * Encodes image to base64
+     * Calls OpenAI API
+     * Parses and returns structured JSON
+   
+   Differences between files:
+   - main.py: Development version with explicit CORS middleware
+   - deploy/main.py: Production version optimized for Lambda 
+                     (relies on Lambda Function URL CORS)
+
+
+2. MANGUM ADAPTER
+   
+   Role: Converts FastAPI application into AWS Lambda-compatible handler
+   
+   Code: handler = Mangum(app)
+   
+   What it does:
+   - Translates AWS Lambda events (API Gateway/Function URL) to ASGI format
+   - Converts ASGI responses back to Lambda-compatible format
+   - Enables FastAPI to run serverlessly on AWS Lambda
+
+
+3. OPENAI GPT-4o VISION API
+   
+   Role: AI model that analyzes product images and generates structured metadata
+   
+   Input:
+   - Base64-encoded image
+   - System prompt with category rules and JSON schema
+   - Extracted text (placeholder for future OCR integration)
+   
+   Output Example:
+   {
+     "productName": "Holiday LED String Lights",
+     "productDescription": "Festive LED string lights perfect for decorations",
+     "productCategory": "Lighting",
+     "productSubcategory": "String Lights",
+     "highlights": ["Energy efficient", "Weather resistant"],
+     "tags": ["christmas", "lights", "outdoor", "LED", "decoration"],
+     "brand": "Holiday Bright",
+     "holiday": "Christmas"
+   }
+
+
+4. PYDANTIC RESPONSE MODEL
+   
+   Role: Data validation and schema definition
+   
+   Model Structure:
+   class DescriptionResponse(BaseModel):
+       product_name: Optional[str] = None
+       product_description: Optional[str] = None
+       product_category: Optional[str] = None
+       product_subcategory: Optional[str] = None
+       highlights: Optional[List[str]] = None
+       tags: Optional[List[str]] = None
+       brand: Optional[str] = None
+       holiday: Optional[str] = None
+   
+   What it does:
+   - Ensures API responses match expected structure
+   - Provides automatic API documentation via FastAPI
+   - Type validation for all fields
+
+
+5. ERROR HANDLING & FALLBACK PARSING
+   
+   Role: Robust JSON parsing with regex fallback
+   
+   Features:
+   - Primary: Direct JSON parsing
+   - Fallback: Regex extraction if JSON parsing fails
+   - Graceful degradation with default values
+   - Always returns structured data, never fails completely
+
+
+================================================================================
+                              SETUP INSTRUCTIONS
+================================================================================
+
+PREREQUISITES
+-------------
+- AWS Account
+- AWS CLI configured with credentials
+- Python 3.9 or higher
+- OpenAI API key
+
+
+LOCAL DEVELOPMENT SETUP
+------------------------
+
+1. Clone the repository
+   
+   cd /Users/pranavmody/Documents/GitHub/Seller_AI/final_AWS
+
+
+2. Install dependencies
+   
+   pip install -r requirements.txt
+
+
+3. Set environment variable
+   
+   export OPENAI_API_KEY="your-openai-api-key-here"
+
+
+4. Run locally
+   
+   uvicorn main:app --reload --port 8000
+
+
+5. Test the endpoint
+   
+   curl -X POST "http://localhost:8000/describe" \
+     -F "file=@/path/to/product-image.jpg"
+
+
+AWS LAMBDA DEPLOYMENT
+---------------------
+
+STEP 1: Prepare Deployment Package
+
+1. Create deployment directory
+   
+   mkdir -p deploy
+   cd deploy
+
+
+2. Install dependencies with platform-specific builds
+   
+   pip install -r ../requirements.txt --platform manylinux2014_x86_64 \
+     --target . --only-binary=:all:
+
+
+3. Copy main application file
+   
+   cp ../main.py .
+   
+   Or use the optimized deploy/main.py that's already configured.
+
+
+STEP 2: Create ZIP Package
+
+   cd deploy
+   zip -r ../lambda-deployment.zip .
+   cd ..
+
+   Note: The ZIP should contain all dependencies and main.py at the root level.
+
+
+STEP 3: Create Lambda Function
+
+1. Go to AWS Lambda Console
+   - Navigate to https://console.aws.amazon.com/lambda/
+
+2. Create Function
+   - Click "Create function"
+   - Choose "Author from scratch"
+   - Function name: seller-ai-product-describer
+   - Runtime: Python 3.11 or Python 3.12
+   - Architecture: x86_64
+   - Click "Create function"
+
+3. Upload Deployment Package
+   - In the "Code" tab, click "Upload from"
+   - Select ".zip file"
+   - Upload lambda-deployment.zip
+   - Click "Save"
+
+4. Configure Handler
+   - In "Runtime settings", click "Edit"
+   - Set Handler to: main.handler
+   - Click "Save"
+
+
+STEP 4: Configure Lambda Settings
+
+1. Set Environment Variables
+   - Go to "Configuration" → "Environment variables"
+   - Click "Edit" → "Add environment variable"
+   - Key: OPENAI_API_KEY
+   - Value: Your OpenAI API key
+   - Click "Save"
+
+2. Adjust Memory and Timeout
+   - Go to "Configuration" → "General configuration"
+   - Click "Edit"
+   - Memory: 512 MB (recommended)
+   - Timeout: 30 seconds
+   - Click "Save"
+
+3. Enable Function URL (Recommended for REST API)
+   - Go to "Configuration" → "Function URL"
+   - Click "Create function URL"
+   - Auth type: NONE (for public access) or AWS_IAM (for authenticated)
+   - Configure CORS:
+     * Allow origins: * (or your specific domain)
+     * Allow methods: POST
+     * Allow headers: content-type
+   - Click "Save"
+   - Copy the Function URL - this is your API endpoint
+
+
+STEP 5: Test the Lambda Function
+
+1. Using AWS Console
+   - Go to "Test" tab
+   - Create new test event with template "API Gateway AWS Proxy"
+   - Modify the event to simulate a POST request
+   - Click "Test"
+
+2. Using curl with Function URL
+   
+   curl -X POST "https://your-function-url.lambda-url.us-east-1.on.aws/describe" \
+     -F "file=@product-image.jpg"
+
+3. Expected Response
+   
+   {
+     "product_name": "Holiday Ornament Set",
+     "product_description": "Beautiful glass ornaments for holiday decoration",
+     "product_category": "Home Decor",
+     "product_subcategory": "Ornaments",
+     "highlights": ["Hand-painted", "Gift-boxed", "Shatterproof"],
+     "tags": ["christmas", "ornament", "decoration", "holiday", "gift"],
+     "brand": null,
+     "category": "Home Decor",
+     "holiday": "Christmas"
+   }
+
+
+================================================================================
+                              API DOCUMENTATION
+================================================================================
+
+ENDPOINT: POST /describe
+
+Description: Analyzes a product image and returns structured metadata
+
+Request:
+- Method: POST
+- Content-Type: multipart/form-data
+- Body: Form field 'file' containing image (JPEG, PNG, etc.)
+
+Response:
+- Content-Type: application/json
+- Status: 200 OK on success
+
+Response Schema:
+{
+  "product_name": "string | null",
+  "product_description": "string | null",
+  "product_category": "string | null",
+  "product_subcategory": "string | null",
+  "highlights": ["string"] | [],
+  "description": "string | null",
+  "tags": ["string"] | [],
+  "brand": "string | null",
+  "category": "string | null",
+  "holiday": "string | null"
+}
+
+Error Responses:
+- 400 - File is not an image
+- 500 - Internal server error (with error details)
+
+
+ALLOWED PRODUCT CATEGORIES
+---------------------------
+
+The system classifies products into one of these predefined categories:
+
+- Baking Supplies
+- Kitchen Accessories
+- Holiday Costumes
+- Character Costumes
+- Costume Accessories
+- Pet Costumes
+- Albums
+- Women
+- Bath & Body
+- Books
+- Movies & Music
+- Stuffed Animals
+- Toys & Games
+- Pawlidays™ Pet Lovers
+- Personalized Products
+- Stationery
+- Gift Wrap
+- Cellophane Bags
+- Gift Card Holders
+- Fillers
+- Ribbons & Bows
+- Tissue Paper
+- Specialty Supplies
+- Seasonal Storage
+- Crafting
+- Costumes
+- Party Supplies
+- Home Decor
+- Stationery & Packaging
+- Garden & Outdoor
+- Fashion
+- Gifts & Keepsakes
+- Seasonal Crafting
+- DIY Kits
+- Men
+- Kids
+- Tableware
+- Dinnerware
+- Drinkware
+- Barware
+- Serveware
+- Party Favors
+- Backdrops & Signage
+- Banners & Flags
+- Candles & Votives
+- Ceiling Décor
+- Centerpieces & Table Décor
+- Chair Covers
+- Confetti
+- Decorating Fabrics
+- Door Banners, Curtains & Fringe
+- Garland
+- Lighting
+- Paper Lanterns
+- Wall Decorations
+- Window Clings
+- Photo Booths
+- Apparel
+- Shoes
+- Accessories
+- Decorations
+- Balloons
+- Crafts & DIY
+- Baking & Cooking
+
+
+================================================================================
+                           COST CONSIDERATIONS
+================================================================================
+
+OPENAI API COSTS
+- GPT-4o Vision: ~$0.01 per image analysis
+- Based on token usage (input + output)
+
+AWS LAMBDA COSTS
+- First 1M requests/month: Free
+- After: $0.20 per 1M requests
+- Memory (512MB): ~$0.0000008333 per 100ms
+- Estimated: ~$0.001-0.005 per request (mostly OpenAI costs)
+
+
+================================================================================
+                         MONITORING & DEBUGGING
+================================================================================
+
+CLOUDWATCH LOGS
+- Lambda automatically logs to CloudWatch
+- View logs: AWS Console → CloudWatch → Log groups → 
+  /aws/lambda/seller-ai-product-describer
+
+COMMON ISSUES
+
+1. "OPENAI_API_KEY is not set"
+   Solution: Ensure environment variable is set in Lambda configuration
+
+2. Timeout errors
+   Solution: Increase Lambda timeout to 30-60 seconds
+   Note: OpenAI API can take 5-15 seconds to process images
+
+3. Memory errors
+   Solution: Increase Lambda memory to 512MB or higher
+   Note: Large images require more memory for base64 encoding
+
+4. "File is not an image" error
+   Solution: Ensure Content-Type is set correctly
+   Verify: File is valid image format (JPEG, PNG, GIF, WebP)
+
+
+================================================================================
+                          FUTURE ENHANCEMENTS
+================================================================================
+
+- Add AWS Textract integration for OCR text extraction
+- Implement image caching to reduce duplicate API calls
+- Add batch processing endpoint for multiple images
+- Include confidence scores for AI-generated metadata
+- Add support for video thumbnail analysis
+- Implement rate limiting and API key management
+- Add database integration for storing results
+
+
+================================================================================
+                              DEPENDENCIES
+================================================================================
+
+fastapi - Web framework
+pydantic - Data validation
+python-multipart - File upload handling
+openai==1.99.9 - OpenAI API client
+mangum - AWS Lambda ASGI adapter
+
+
+================================================================================
+                        SECURITY CONSIDERATIONS
+================================================================================
+
+1. API KEY PROTECTION
+   - Store OpenAI API key in Lambda environment variables (encrypted at rest)
+   - Never commit API keys to version control
+
+2. INPUT VALIDATION
+   - File type verification before processing
+   - File size limits (configure in FastAPI)
+
+3. CORS CONFIGURATION
+   - Restrict origins in production
+   - Use specific domains instead of *
+
+4. AUTHENTICATION (Optional)
+   - Enable AWS IAM authentication on Function URL
+   - Add API Gateway with API keys for additional security
+
+
+================================================================================
+                              PROJECT FILES
+================================================================================
+
+main.py
+- Development version with CORS middleware
+- For local testing and development
+
+deploy/main.py
+- Production-optimized version
+- Removes explicit CORS (uses Lambda Function URL CORS)
+- Enhanced error handling
+
+requirements.txt
+- Lists all Python dependencies
+
+deploy/
+- Contains deployment package with all dependencies bundled
+
+
+================================================================================
+                            END OF DOCUMENT
+================================================================================
