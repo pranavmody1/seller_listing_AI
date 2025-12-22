@@ -10,6 +10,13 @@ function App() {
   const [editableData, setEditableData] = useState({});
   const [showListing, setShowListing] = useState(false);
   const [finalListing, setFinalListing] = useState(null);
+  const [selectedAPI, setSelectedAPI] = useState("gpt"); // "gpt" or "nova"
+
+  // API endpoints
+  const API_ENDPOINTS = {
+    gpt: "https://76fbp6nkjlowmolrprocdec5qa0eryku.lambda-url.us-east-1.on.aws/describe",
+    nova: "https://lrbg4tmqiogxcxzlmwl572iqni0ukdjp.lambda-url.us-east-1.on.aws/describe"
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -39,7 +46,7 @@ function App() {
 
     try {
       const res = await axios.post(
-        "https://76fbp6nkjlowmolrprocdec5qa0eryku.lambda-url.us-east-1.on.aws/describe",
+        API_ENDPOINTS[selectedAPI],
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -428,6 +435,28 @@ function App() {
           <span>🎄</span>
           Holiday Product Describer
         </h1>
+        
+        {/* API Selection Toggle */}
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <label style={{ fontSize: '0.9rem', color: '#666', marginRight: '1rem' }}>
+            Select AI Model:
+          </label>
+          <select 
+            value={selectedAPI} 
+            onChange={(e) => setSelectedAPI(e.target.value)}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: '8px',
+              border: '2px solid #667eea',
+              fontSize: '1rem',
+              cursor: 'pointer',
+              background: 'white'
+            }}
+          >
+            <option value="gpt">GPT-4o Vision (Original)</option>
+            <option value="nova">Amazon Nova Lite (New - 50x Cheaper!)</option>
+          </select>
+        </div>
         
         <div style={uploadAreaStyle} onClick={() => document.getElementById('fileInput').click()}>
           <input 

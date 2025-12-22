@@ -42,11 +42,15 @@ env/
 
 # Deployment directory with dependencies (should not be in git)
 deploy/
+deploy_nova/
 app/
 
 # Zip archives
 *.zip
 app.zip
+lambda_deployment.zip
+lambda_nova_deployment.zip
+lambda_bedrock_deployment.zip
 
 # macOS
 .DS_Store

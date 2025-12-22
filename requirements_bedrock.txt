@@ -1,0 +1,6 @@
+# Requirements for AWS Bedrock version
+fastapi
+pydantic
+python-multipart
+boto3
+mangum
