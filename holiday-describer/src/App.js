@@ -453,8 +453,8 @@ function App() {
               background: 'white'
             }}
           >
-            <option value="gpt">GPT-4o Vision (Original)</option>
-            <option value="nova">Amazon Nova Lite (New - 50x Cheaper!)</option>
+            <option value="gpt">GPT-4o Vision</option>
+            <option value="nova">Amazon Nova Lite</option>
           </select>
         </div>
         
