@@ -10,14 +10,8 @@ from mangum import Mangum
 # --- FastAPI app ---
 app = FastAPI()
 
-# CORS: keep permissive for testing; tighten later
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],      # <-- set your site domain in prod
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Note: CORS is handled by Lambda Function URL configuration
+# No need for CORS middleware here
 
 # Initialize Bedrock Runtime client
 # Uses IAM role from Lambda execution environment (no API keys needed!)
